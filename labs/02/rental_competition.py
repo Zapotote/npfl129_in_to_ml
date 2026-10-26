@@ -10,6 +10,14 @@ import urllib.request
 import numpy as np
 import numpy.typing as npt
 
+import sklearn.linear_model
+
+import sklearn.compose
+import sklearn.pipeline
+import sklearn.preprocessing
+import sklearn.model_selection
+import sklearn.metrics
+
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--predict", default=None, type=str, help="Path to the dataset to predict")
@@ -59,7 +67,32 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         train = Dataset()
 
         # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+        categorical_columns = [0, 1, 2, 3, 4, 5, 6, 7]
+        numerical_columns = [8, 9, 10, 11]
+
+        encoder = sklearn.preprocessing.OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+
+        scaler = sklearn.preprocessing.StandardScaler()
+
+        transformers = [
+            ("categorical", encoder, categorical_columns),
+            ("numerical", scaler, numerical_columns)
+        ]
+
+        processor = sklearn.compose.ColumnTransformer(transformers)
+
+        polynomial = sklearn.preprocessing.PolynomialFeatures(degree=2, include_bias=False)
+
+        regression = sklearn.linear_model.Ridge(alpha=3.9) # tried : for alpha in for alpha in np.linspace(3, 5, 21) (3-5 interval determined empirically
+
+        steps = [
+            ("processor", processor),
+            ("polynomial", polynomial),
+            ("regression", regression)
+        ]
+
+        model = sklearn.pipeline.Pipeline(steps)
+        model.fit(train.data, train.target)
 
         # Serialize the model.
         with lzma.open(args.model_path, "wb") as model_file:
@@ -73,7 +106,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
             model = pickle.load(model_file)
 
         # TODO: Generate `predictions` with the test set predictions.
-        predictions = ...
+        predictions = model.predict(test.data)
 
         return predictions
 
