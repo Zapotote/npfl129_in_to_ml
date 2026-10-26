@@ -6,14 +6,18 @@ import sklearn.linear_model
 import sklearn.metrics
 import sklearn.model_selection
 
+# 209d66d8-30df-4488-a2f1-83ab4ff8c631
+# 40608048-7fec-4f56-a209-921195a3eaaf
+# 197a0331-004f-4e9d-82f3-05fb0a647d77
+
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
-parser.add_argument("--data_size", default=40, type=int, help="Data size")
-parser.add_argument("--plot", default=False, const=True, nargs="?", type=str, help="Plot the predictions")
-parser.add_argument("--range", default=3, type=int, help="Feature order range")
+parser.add_argument("--data_size", default=50, type=int, help="Data size")
+parser.add_argument("--plot", default=True, const=True, nargs="?", type=str, help="Plot the predictions")
+parser.add_argument("--range", default=9, type=int, help="Feature order range")
 parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
-parser.add_argument("--test_size", default=0.5, type=lambda x: int(x) if x.isdigit() else float(x), help="Test size")
+parser.add_argument("--test_size", default=40, type=lambda x: int(x) if x.isdigit() else float(x), help="Test size")
 # If you add more arguments, ReCodEx will keep them with your default values.
 
 
@@ -22,29 +26,34 @@ def main(args: argparse.Namespace) -> list[float]:
     xs = np.linspace(0, 7, num=args.data_size)
     ys = np.sin(xs) + np.random.RandomState(args.seed).normal(0, 0.2, size=args.data_size)
 
+    features = np.empty((args.data_size, 0))
     rmses = []
     for order in range(1, args.range + 1):
         # TODO: Create features `(x^1, x^2, ..., x^order)`, preferably in this ordering.
         # Note that you can just append `x^order` to the features from the previous iteration.
-        ...
+        new_feature = (xs**order).reshape(-1, 1)
+        features = np.append(features, new_feature, axis=1)
 
         # TODO: Split the data into a train set and a test set.
         # Use `sklearn.model_selection.train_test_split` method call, passing
         # arguments `test_size=args.test_size, random_state=args.seed`.
-        ...
+
+        train_data, test_data, train_target, test_target = sklearn.model_selection.train_test_split(features, ys, test_size=args.test_size, random_state=args.seed)
 
         # TODO: Fit a linear regression model `sklearn.linear_model.LinearRegression(tol=1e-15)`
         # on the train set using the `fit` method. We use a stricter tolerance `tol=1e-15`
         # as the default tolerance is not sufficient when using features of higher order.
-        model = ...
+        model = sklearn.linear_model.LinearRegression(tol=1e-15)
+        model.fit(train_data, train_target)
 
         # TODO: Predict targets on the test set using the `predict` method of the trained model.
-        ...
+        model.predict(test_data)
 
         # TODO: Compute root mean square error on the test set predictions.
         # You can either do it manually, or you can look at the metrics offered
         # by the `sklearn.metrics` module.
-        rmse = ...
+
+        rmse = np.sqrt(sklearn.metrics.mean_squared_error(test_target, model.predict(test_data)))
 
         rmses.append(rmse)
 

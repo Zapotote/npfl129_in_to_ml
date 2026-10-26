@@ -12,6 +12,9 @@ parser.add_argument("--seed", default=42, type=int, help="Random seed")
 parser.add_argument("--test_size", default=0.1, type=lambda x: int(x) if x.isdigit() else float(x), help="Test size")
 # If you add more arguments, ReCodEx will keep them with your default values.
 
+# 209d66d8-30df-4488-a2f1-83ab4ff8c631
+# 40608048-7fec-4f56-a209-921195a3eaaf
+# 197a0331-004f-4e9d-82f3-05fb0a647d77
 
 def main(args: argparse.Namespace) -> float:
     # Load the diabetes dataset.
@@ -24,22 +27,27 @@ def main(args: argparse.Namespace) -> float:
 
     # TODO: Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
-    ...
+    data = dataset.data
+    target = dataset.target
+    ones = np.ones((data.shape[0], 1))
+    data = np.concatenate((data, ones), axis=1)
+    # print(data)
 
     # TODO: Split the dataset into a train set and a test set.
     # Use `sklearn.model_selection.train_test_split` method call, passing
     # arguments `test_size=args.test_size, random_state=args.seed`.
-    ...
+    x_train, x_test, target_train, target_test = sklearn.model_selection.train_test_split(data, target, test_size=args.test_size, random_state=args.seed)
 
     # TODO: Solve the linear regression using the algorithm from the lecture,
     # explicitly computing the matrix inverse (using `np.linalg.inv`).
-    ...
+    weights = np.linalg.inv(np.dot(x_train.T, x_train)) @ np.dot(x_train.T, target_train)
 
     # TODO: Predict target values on the test set.
-    ...
+    predictions = np.dot(x_test, weights)
 
     # TODO: Manually compute root mean square error on the test set predictions.
-    rmse = ...
+
+    rmse = np.sqrt(np.mean((predictions - target_test)**2))
 
     return rmse
 
@@ -48,3 +56,5 @@ if __name__ == "__main__":
     main_args = parser.parse_args([] if "__file__" not in globals() else None)
     rmse = main(main_args)
     print("{:.2f}".format(rmse))
+    # dataset = sklearn.datasets.load_diabetes()
+    # print(dataset.DESCR)
