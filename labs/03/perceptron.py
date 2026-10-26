@@ -20,10 +20,10 @@ import sklearn.datasets
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
-parser.add_argument("--data_size", default=100, type=int, help="Data size")
+parser.add_argument("--data_size", default=200, type=int, help="Data size")
 parser.add_argument("--plot", default=False, const=True, nargs="?", type=str, help="Plot the predictions")
 parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
-parser.add_argument("--seed", default=42, type=int, help="Random seed")
+parser.add_argument("--seed", default=92, type=int, help="Random seed")
 # If you add more arguments, ReCodEx will keep them with your default values.
 
 
@@ -39,6 +39,8 @@ def main(args: argparse.Namespace) -> np.ndarray:
 
     # TODO: Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
+    ones = np.ones((data.shape[0], 1))
+    data = np.concatenate((data, ones), axis=1)
 
     # Generate initial perceptron weights.
     weights = np.zeros(data.shape[1])
@@ -52,6 +54,16 @@ def main(args: argparse.Namespace) -> np.ndarray:
         # training data iteration, perform the required updates to the `weights`
         # for incorrectly classified examples. If all training instances are
         # correctly classified, set `done=True`, otherwise set `done=False`.
+        done = True
+
+        for i in permutation:
+            prediction = np.dot(data[i], weights)
+
+            if target[i]*prediction <= 0:
+
+                weights += target[i]*data[i]
+                done = False
+
 
         if args.plot and not done:
             import matplotlib.pyplot as plt

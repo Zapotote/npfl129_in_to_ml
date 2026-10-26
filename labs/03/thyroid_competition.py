@@ -23,6 +23,7 @@ import urllib.request
 
 import numpy as np
 import numpy.typing as npt
+import sklearn
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -65,8 +66,28 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         np.random.seed(args.seed)
         train = Dataset()
 
-        # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+        scaling = sklearn.compose.ColumnTransformer([
+            ("continuous", sklearn.preprocessing.StandardScaler(), list(range(15, 21))),
+        ], remainder="passthrough")
+
+        pipeline = sklearn.pipeline.Pipeline([
+            ("scaling", scaling),
+            ("poly", sklearn.preprocessing.PolynomialFeatures()),
+            ("logreg", sklearn.linear_model.LogisticRegression(random_state=args.seed, max_iter=10000)),
+        ])
+
+        param_grid = {
+            "scaling__continuous": [sklearn.preprocessing.StandardScaler(),sklearn.preprocessing.MinMaxScaler()],
+            "poly__degree": [1, 2, 3, 4],
+            "logreg__C": [1, 10, 100, 1000, 10000]
+        }
+
+        cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True, random_state=args.seed)
+        model = sklearn.model_selection.GridSearchCV(estimator=pipeline, param_grid=param_grid,scoring="accuracy", cv=cv)
+
+        model.fit(train.data, train.target)
+        #print("Best parameters:", model.best_params_)
+        #print("Best CV accuracy:", model.best_score_)
 
         # Serialize the model.
         with lzma.open(args.model_path, "wb") as model_file:
@@ -80,7 +101,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
             model = pickle.load(model_file)
 
         # TODO: Generate `predictions` with the test set predictions.
-        predictions = ...
+        predictions = model.predict(test.data)
 
         return predictions
 
