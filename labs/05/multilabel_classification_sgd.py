@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=10, type=int, help="Batch size")
 parser.add_argument("--classes", default=5, type=int, help="Number of classes to use")
 parser.add_argument("--data_size", default=200, type=int, help="Data size")
-parser.add_argument("--epochs", default=10, type=int, help="Number of SGD training epochs")
+parser.add_argument("--epochs", default=2, type=int, help="Number of SGD training epochs")
 parser.add_argument("--learning_rate", default=0.01, type=float, help="Learning rate")
 parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
@@ -45,7 +45,10 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
     # TODO: The `target` is a list of classes for every input example. Convert
     # it to a dense representation (n-hot encoding) -- for each input example,
     # the target should be vector of `args.classes` binary indicators.
-    target = ...
+    target = np.zeros((args.data_size, args.classes), dtype=int)
+
+    for i, labels in enumerate(target_list):
+        target[i, labels] = 1
 
     # Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
@@ -66,18 +69,47 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
         # TODO: Process the data in the order of `permutation`. For every
         # `args.batch_size` of them, average their gradient, and update the weights.
         # You can assume that `args.batch_size` exactly divides `train_data.shape[0]`.
-        ...
+        for start in range(0, train_data.shape[0], args.batch_size):
+            indices = permutation[start:start + args.batch_size]
+
+            batch_data = train_data[indices]
+            batch_target = train_target[indices]
+
+            logits = np.dot(batch_data, weights)
+            predictions = 1 / (1 + np.exp(-logits))
+
+            gradient = np.dot(batch_data.T, predictions - batch_target)/args.batch_size
+            weights -= args.learning_rate * gradient
 
         # TODO: After the SGD epoch, compute the micro-averaged and the
         # macro-averaged F1-score for both the train test and the test set.
         # Compute these scores manually, without using `sklearn.metrics`.
-        train_f1_micro, train_f1_macro, test_f1_micro, test_f1_macro = ...
+        train_f1_micro, train_f1_macro = compute_f1(train_data, train_target, weights)
+        test_f1_micro, test_f1_macro = compute_f1(test_data, test_target, weights)
 
         print("After epoch {}: train F1 micro {:.2f}% macro {:.2f}%, test F1 micro {:.2f}% macro {:.1f}%".format(
             epoch + 1, 100 * train_f1_micro, 100 * train_f1_macro, 100 * test_f1_micro, 100 * test_f1_macro))
 
     return weights, [(100 * train_f1_micro, 100 * train_f1_macro), (100 * test_f1_micro, 100 * test_f1_macro)]
 
+
+def compute_f1(data, target, weights):
+    probabilities = 1 / (1 + np.exp(-(np.dot(data, weights))))
+    predictions = probabilities >= 0.5
+
+    tp = np.sum(predictions & (target == 1), axis=0)
+    fp = np.sum(predictions & (target == 0), axis=0)
+    fn = np.sum((predictions == 0) & (target == 1), axis=0)
+
+    micro_denominator = 2 * np.sum(tp) + np.sum(fp) + np.sum(fn)
+    micro = 2 * np.sum(tp) / micro_denominator
+
+    denominator = 2 * tp + fp + fn
+    f1_per_class = np.divide(2 * tp, denominator, out=np.zeros_like(denominator, dtype=float), where=denominator != 0)
+
+    macro = np.mean(f1_per_class)
+
+    return micro, macro
 
 if __name__ == "__main__":
     main_args = parser.parse_args([] if "__file__" not in globals() else None)
