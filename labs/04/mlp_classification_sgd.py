@@ -24,7 +24,7 @@ parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--batch_size", default=10, type=int, help="Batch size")
 parser.add_argument("--classes", default=10, type=int, help="Number of classes to use")
-parser.add_argument("--epochs", default=10, type=int, help="Number of SGD training epochs")
+parser.add_argument("--epochs", default=3, type=int, help="Number of SGD training epochs")
 parser.add_argument("--hidden_layer", default=50, type=int, help="Hidden layer size")
 parser.add_argument("--learning_rate", default=0.01, type=float, help="Learning rate")
 parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
@@ -58,15 +58,19 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
         # We assume a neural network with a single hidden layer of size `args.hidden_layer`
         # and ReLU activation, where $ReLU(x) = max(x, 0)$, and an output layer with softmax
         # activation.
-        #
+        hidden_z = np.dot(inputs, weights[0]) + biases[0]
+        hidden_layer = np.maximum(0, hidden_z)
         # The value of the hidden layer is computed as `ReLU(inputs @ weights[0] + biases[0])`.
         # The value of the output layer is computed as `softmax(hidden_layer @ weights[1] + biases[1])`.
-        #
+        output_z = np.dot(hidden_layer, weights[1]) + biases[1]
         # Note that you need to be careful when computing softmax, because the exponentiation
         # in softmax can easily overflow. To avoid it, you should use the fact that
         # $softmax(z) = softmax(z + any_constant)$ and compute $softmax(z) = softmax(z - maximum_of_z)$.
+        output_z = output_z - np.max(output_z, axis=1, keepdims=True) # keep shape
+        exp_z = np.exp(output_z)
         # That way we only exponentiate values which are non-positive, and overflow does not occur.
-        raise NotImplementedError()
+        output_layer = exp_z / np.sum(exp_z, axis=1, keepdims=True)
+        return hidden_layer, output_layer
 
     for epoch in range(args.epochs):
         permutation = generator.permutation(train_data.shape[0])
@@ -74,7 +78,29 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
         # TODO: Process the data in the order of `permutation`. For every
         # `args.batch_size` of them, average their gradient, and update the weights.
         # You can assume that `args.batch_size` exactly divides `train_data.shape[0]`.
-        #
+        for start in range(0,train_data.shape[0], args.batch_size):
+            batch_indices = permutation[start:start + args.batch_size]
+            batch_data = train_data[batch_indices]
+            batch_target = train_target[batch_indices]
+
+            hidden_layer, output_layer = forward(batch_data)
+            hot_matrix = np.eye(args.classes)[batch_target]
+
+            output_gradient = output_layer - hot_matrix
+
+            gradient_w1 = np.dot(hidden_layer.T, output_gradient)/args.batch_size
+            gradient_b1 = np.mean(output_gradient, axis=0)
+
+            backward_prop = np.dot(output_gradient, weights[1].T)
+            hidden_gradient = backward_prop * (hidden_layer > 0)
+
+            gradient_w0 = np.dot(batch_data.T, hidden_gradient)/args.batch_size
+            gradient_b0 = np.mean(hidden_gradient, axis=0)
+
+            weights[0] -= args.learning_rate * gradient_w0
+            weights[1] -= args.learning_rate * gradient_w1
+            biases[0] -= args.learning_rate * gradient_b0
+            biases[1] -= args.learning_rate * gradient_b1
         # The gradient used in SGD has now four parts, gradient of `weights[0]` and `weights[1]`
         # and gradient of `biases[0]` and `biases[1]`.
         #
@@ -90,7 +116,10 @@ def main(args: argparse.Namespace) -> tuple[tuple[np.ndarray, ...], list[float]]
 
         # TODO: After the SGD epoch, measure the accuracy for both the
         # train test and the test set.
-        train_accuracy, test_accuracy = ...
+        train_predictions = np.argmax(forward(train_data)[1], axis=1)
+        train_accuracy = np.mean(train_predictions == train_target)
+        test_predictions = np.argmax(forward(test_data)[1], axis=1)
+        test_accuracy = np.mean(test_predictions == test_target)
 
         print("After epoch {}: train acc {:.1f}%, test acc {:.1f}%".format(
             epoch + 1, 100 * train_accuracy, 100 * test_accuracy))

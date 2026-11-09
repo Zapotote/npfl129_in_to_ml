@@ -23,6 +23,12 @@ import urllib.request
 
 import numpy as np
 import numpy.typing as npt
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.pipeline import Pipeline
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -62,8 +68,21 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         train = Dataset()
 
         # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+        model = Pipeline([
+            ("scaler", MinMaxScaler()),
+            ("mlp", MLPClassifier(hidden_layer_sizes=(256, 128), activation="relu", alpha=0.0001, batch_size=128, learning_rate_init=0.001, max_iter=50,early_stopping=True, verbose=True, random_state=args.seed))
+        ])
 
+        model.fit(train.data, train.target)
+
+        mlp = model.named_steps["mlp"]
+        mlp._optimizer = mlp._best_coefs = mlp._best_intercepts = None
+
+        for i in range(len(mlp.coefs_)):
+            mlp.coefs_[i] = mlp.coefs_[i].astype(np.float16)
+
+        for i in range(len(mlp.intercepts_)):
+            mlp.intercepts_[i] = mlp.intercepts_[i].astype(np.float16)
         # If you trained one or more MLPs, you can use the following code
         # to compress it significantly (approximately 12 times). The snippet
         # assumes the trained `MLPClassifier` is in the `mlp` variable.
@@ -83,7 +102,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
             model = pickle.load(model_file)
 
         # TODO: Generate `predictions` with the test set predictions.
-        predictions = ...
+        predictions = model.predict(test.data)
 
         return predictions
 

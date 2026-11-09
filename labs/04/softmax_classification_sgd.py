@@ -22,10 +22,10 @@ import sklearn.model_selection
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
-parser.add_argument("--batch_size", default=10, type=int, help="Batch size")
+parser.add_argument("--batch_size", default=100, type=int, help="Batch size")
 parser.add_argument("--classes", default=10, type=int, help="Number of classes to use")
-parser.add_argument("--epochs", default=10, type=int, help="Number of SGD training epochs")
-parser.add_argument("--learning_rate", default=0.01, type=float, help="Learning rate")
+parser.add_argument("--epochs", default=3, type=int, help="Number of SGD training epochs")
+parser.add_argument("--learning_rate", default=0.05, type=float, help="Learning rate")
 parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
 parser.add_argument("--seed", default=244, type=int, help="Random seed")
 parser.add_argument("--test_size", default=797, type=lambda x: int(x) if x.isdigit() else float(x), help="Test size")
@@ -58,16 +58,44 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
         # TODO: Process the data in the order of `permutation`. For every
         # `args.batch_size` of them, average their gradient, and update the weights.
         # You can assume that `args.batch_size` exactly divides `train_data.shape[0]`.
-        #
+        for start in range(0, train_data.shape[0], args.batch_size):
+            batch_indices = permutation[start:start + args.batch_size]
+            batch_data = train_data[batch_indices]
+            batch_target = train_target[batch_indices]
+
+            logits = np.dot(batch_data, weights)
         # Note that you need to be careful when computing softmax because the exponentiation
         # in softmax can easily overflow. To avoid it, you should use the fact that
         # $softmax(z) = softmax(z + any_constant)$ and compute $softmax(z) = softmax(z - maximum_of_z)$.
         # That way we only exponentiate non-positive values, and overflow does not occur.
+            logits -= np.max(logits, axis=1, keepdims=True)
+            exp_logits = np.exp(logits)
+            probabilities = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+            hot_matrix = np.eye(args.classes)[batch_target]
+            gradient = np.dot(batch_data.T, probabilities - hot_matrix) / args.batch_size
+            weights -= args.learning_rate * gradient
 
         # TODO: After the SGD epoch, measure the average loss and accuracy for both the
         # train test and the test set. The loss is the average MLE loss (i.e., the
         # negative log-likelihood, or cross-entropy loss, or KL loss) per example.
-        train_accuracy, train_loss, test_accuracy, test_loss = ...
+        train_prediction = np.argmax(np.dot(train_data, weights), axis=1)
+        train_accuracy = np.mean(train_prediction == train_target)
+        test_prediction = np.argmax(np.dot(test_data, weights), axis=1)
+        test_accuracy = np.mean(test_prediction == test_target)
+
+        train_logits = np.dot(train_data, weights)
+        train_logits -= np.max(train_logits, axis=1, keepdims=True)
+        train_exp = np.exp(train_logits)
+        train_probs = train_exp / np.sum(train_exp, axis=1, keepdims=True)
+        correct_probs = train_probs[np.arange(len(train_target)), train_target]
+        train_loss = -np.mean(np.log(np.clip(correct_probs, 1e-15, 1)))
+
+        test_logits = np.dot(test_data, weights)
+        test_logits -= np.max(test_logits, axis=1, keepdims=True)
+        test_exp = np.exp(test_logits)
+        test_probs = test_exp / np.sum(test_exp, axis=1, keepdims=True)
+        correct_probs_test = test_probs[np.arange(len(test_target)), test_target]
+        test_loss = -np.mean(np.log(np.clip(correct_probs_test, 1e-15, 1)))
 
         print("After epoch {}: train loss {:.4f} acc {:.1f}%, test loss {:.4f} acc {:.1f}%".format(
             epoch + 1, train_loss, 100 * train_accuracy, test_loss, 100 * test_accuracy))
