@@ -24,6 +24,8 @@ import numpy as np
 import sklearn.metrics
 import sklearn.model_selection
 import sklearn.svm
+from collections import Counter
+import re
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -67,6 +69,17 @@ def main(args: argparse.Namespace) -> float:
     # in the training data. A term is every maximal sequence of at least 1 word character,
     # where a word character corresponds to a regular expression `\w`.
 
+    counts = Counter()
+    for document in train_data:
+        counts.update(re.findall(r"\w+", document))
+
+    vocabulary = {
+        term: i
+        for i, term in enumerate(
+            term for term, count in counts.items() if count >= 2
+        )
+    }
+
     # TODO: For each document, compute its features as
     # - term frequency (TF), if `args.tf` is set (term frequency is
     #   proportional to the number of term occurrences but normalized to
@@ -79,13 +92,44 @@ def main(args: argparse.Namespace) -> float:
     # - the IDFs are computed on the train set and then reused without
     #   modification on the test set.
 
+    def transform(documents):
+        X = np.zeros((len(documents), len(vocabulary)))
+
+        for i, document in enumerate(documents):
+            for term in re.findall(r"\w+", document):
+                if term in vocabulary:
+                    X[i, vocabulary[term]] += 1
+
+            if args.tf:
+                total = X[i].sum()
+                if total > 0:
+                    X[i] /= total
+            else:
+                X[i] = (X[i] > 0).astype(float)
+
+        return X
+
+    X_train = transform(train_data)
+    X_test = transform(test_data)
+
+    if args.idf:
+        df = np.sum(X_train > 0, axis=0)
+        idf = np.log(len(train_data) / (1 + df))
+
+        X_train *= idf
+        X_test *= idf
+
     # TODO: Train a `sklearn.svm.LinearSVC(dual=False, C=100)` multi-class
     # classification model on the train set, and classify the test set.
     # We use this model instead of `sklearn.linear_model.LogisticRegression`
     # because it is several times faster on our data.
 
+    model = sklearn.svm.LinearSVC(dual=False, C=100)
+    model.fit(X_train, train_target)
+    predictions = model.predict(X_test)
+
     # TODO: Evaluate the test set performance using a macro-averaged F1 score.
-    f1_score = ...
+    f1_score = sklearn.metrics.f1_score(test_target, predictions, average="macro")
 
     return 100 * f1_score
 

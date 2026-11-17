@@ -26,6 +26,7 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.linear_model import LogisticRegression
 
 import numpy as np
+from diacritization_dictionary import Dictionary
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -97,9 +98,23 @@ def main(args: argparse.Namespace) -> Optional[str]:
         words = train.data.split()
         targets = train.target.split()
 
-        dictionary = defaultdict(Counter)
+        provided_dictionary = Dictionary().variants
+        frequencies = defaultdict(Counter)
         for word, target in zip(tokenize(train.data), tokenize(train.target)):
-            dictionary[word.lower()][target.lower()] += 1
+            frequencies[word.lower()][target.lower()] += 1
+
+        dictionary = {}
+
+        for word, counts in frequencies.items():
+            dictionary[word] = set(counts)
+
+        for word, variants in provided_dictionary.items():
+            word = word.lower()
+
+            if word not in dictionary:
+                dictionary[word] = set()
+
+            dictionary[word].update(variant.lower() for variant in variants)
 
         X = []
         y = []
@@ -115,15 +130,19 @@ def main(args: argparse.Namespace) -> Optional[str]:
                 word = word.lower()
                 correct = correct.lower()
 
-                candidates = dictionary[word]
+                candidates = dictionary.get(word, [])
 
                 if len(candidates) < 2:
                     continue
 
-                total = sum(candidates.values())
+                total = sum(frequencies[word].values())
 
-                for candidate, count in candidates.items():
-                    frequency = count / total
+                for candidate in candidates:
+                    count = frequencies[word][candidate]
+
+                    frequency = (
+                        count / total if total > 0 else 0
+                    )
 
                     features = word_features(
                         words, i, candidate, frequency
@@ -144,7 +163,8 @@ def main(args: argparse.Namespace) -> Optional[str]:
         classifier.fit(X_vectorized, y)
 
         model = {
-            "dictionary": dict(dictionary),
+            "dictionary": dictionary,
+            "frequencies": dict(frequencies),
             "vectorizer": vectorizer,
             "classifier": classifier,
         }
@@ -164,6 +184,7 @@ def main(args: argparse.Namespace) -> Optional[str]:
         # TODO: Generate `predictions` with the test set predictions. Specifically,
 
         dictionary = model["dictionary"]
+        frequencies = model["frequencies"]
         vectorizer = model["vectorizer"]
         classifier = model["classifier"]
 
@@ -173,40 +194,39 @@ def main(args: argparse.Namespace) -> Optional[str]:
         def restore(word, i):
             candidates = dictionary.get(word.lower())
 
-            # unknown word -> keep unchanged
             if not candidates:
                 return word
 
-            # only one possible spelling -> dictionary
+            candidates = sorted(candidates)
+
             if len(candidates) == 1:
-                result = next(iter(candidates))
+                result = candidates[0]
 
             else:
-                # multiple spellings -> logistic regression
-                total = sum(candidates.values())
+                counts = frequencies.get(word.lower(), {})
+                total = sum(counts.values())
 
                 features = [
                     word_features(
                         words,
                         i,
                         candidate,
-                        count / total
+                        counts.get(candidate, 0) / total
+                        if total > 0 else 0
                     )
-                    for candidate, count in candidates.items()
+                    for candidate in candidates
                 ]
 
                 X = vectorizer.transform(features)
 
-                # probability that each candidate is correct
                 probabilities = classifier.predict_proba(X)[:, 1]
 
-                # choose the candidate with the highest probability
                 best = np.argmax(probabilities)
-                result = list(candidates)[best]
+                result = candidates[best]
 
-            # preserve capitalization
             if word.isupper():
                 return result.upper()
+
             if word[0].isupper():
                 return result.capitalize()
 

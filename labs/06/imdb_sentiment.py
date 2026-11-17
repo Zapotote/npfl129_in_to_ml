@@ -26,6 +26,8 @@ import numpy.typing as npt
 import sklearn.feature_extraction
 import sklearn.metrics
 import sklearn.model_selection
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
@@ -35,7 +37,8 @@ parser.add_argument("--seed", default=42, type=int, help="Random seed")
 # For these and any other arguments you add, ReCodEx will keep your default value.
 parser.add_argument("--model_path", default="imdb_sentiment.model", type=str, help="Model path")
 # TODO: Add other arguments (typically hyperparameters) as you need.
-
+parser.add_argument("--C", default=10.0, type=float, help="Inverse L2 regularization strength")
+parser.add_argument("--min_df", default=2, type=int, help="Minimum document frequency of an n-gram")
 
 class Dataset:
     """IMDB dataset.
@@ -81,7 +84,6 @@ def load_word_embeddings(
     embeddings = {word: vector for word, vector in zip(words, vectors)}
     return embeddings
 
-
 def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
     word_embeddings = load_word_embeddings()
 
@@ -96,38 +98,39 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         # embeddings: averaging, max pooling, etc. You can also try to exclude
         # words that do not contribute much to the meaning of the sentence (stop
         # words). See `sklearn.feature_extraction._stop_words.ENGLISH_STOP_WORDS`.
-        train_as_vectors = ...
+        vectorizer = TfidfVectorizer(token_pattern=r"\S+", ngram_range=(1, 2), min_df=args.min_df, sublinear_tf=True)
+        train_as_vectors = vectorizer.fit_transform(train.data)
 
         train_x, validation_x, train_y, validation_y = sklearn.model_selection.train_test_split(
             train_as_vectors, train.target, test_size=0.25, random_state=args.seed)
 
         print("Training.", file=sys.stderr)
         # TODO: Train a model of your choice on the given data.
-        model = ...
+        model = LogisticRegression(C=args.C, max_iter=2000)
+        model.fit(train_x, train_y)
 
         print("Evaluation.", file=sys.stderr)
         validation_predictions = model.predict(validation_x)
         validation_accuracy = sklearn.metrics.accuracy_score(validation_y, validation_predictions)
         print("Validation accuracy {:.2f}%".format(100 * validation_accuracy))
-
         # Serialize the model.
         with lzma.open(args.model_path, "wb") as model_file:
-            pickle.dump(model, model_file)
+            pickle.dump((vectorizer, model), model_file)
 
     else:
         # Use the model and return test set predictions.
         test = Dataset(args.predict)
 
         with lzma.open(args.model_path, "rb") as model_file:
-            model = pickle.load(model_file)
+            vectorizer, model = pickle.load(model_file)
 
         # TODO: Start by preprocessing the test data, ideally using the same
         # code as during training.
-        test_as_vectors = ...
+        test_as_vectors = vectorizer.transform(test.data)
 
         # TODO: Generate `predictions` with the test set predictions, either
         # as a Python list or a NumPy array.
-        predictions = ...
+        predictions = model.predict(test_as_vectors)
 
         return predictions
 
