@@ -24,6 +24,14 @@ import urllib.request
 import numpy as np
 import numpy.typing as npt
 
+from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import FeatureUnion
+from sklearn.svm import LinearSVC
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--predict", default=None, type=str, help="Path to the dataset to predict")
@@ -63,7 +71,29 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         train = Dataset()
 
         # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+
+        model = Pipeline([
+            ("features", FeatureUnion([
+                ("word", TfidfVectorizer(
+                    ngram_range=(1, 2),
+                    min_df=2,
+                    sublinear_tf=True
+                )),
+                ("char", TfidfVectorizer(
+                    analyzer="char",
+                    ngram_range=(2, 5),
+                    min_df=2,
+                    sublinear_tf=True
+                ))
+            ])),
+            ("classifier", LinearSVC(
+                C=0.003,
+                random_state=args.seed
+            ))
+        ])
+
+        model.fit(train.data, train.target)
+
 
         # Serialize the model.
         with lzma.open(args.model_path, "wb") as model_file:
@@ -78,7 +108,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
 
         # TODO: Generate `predictions` with the test set predictions, either
         # as a Python list or a NumPy array.
-        predictions = ...
+        predictions = model.predict(test.data)
 
         return predictions
 
