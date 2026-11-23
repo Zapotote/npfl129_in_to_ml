@@ -24,8 +24,8 @@ import sklearn.model_selection
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--alpha", default=0.1, type=float, help="Smoothing parameter of our NB classifier")
-parser.add_argument("--naive_bayes_type", default="gaussian", choices=["gaussian", "multinomial", "bernoulli"])
-parser.add_argument("--classes", default=10, type=int, help="Number of classes")
+parser.add_argument("--naive_bayes_type", default="bernoulli", choices=["gaussian", "multinomial", "bernoulli"])
+parser.add_argument("--classes", default=3, type=int, help="Number of classes")
 parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
 parser.add_argument("--seed", default=72, type=int, help="Random seed")
 parser.add_argument("--test_size", default=0.5, type=lambda x: int(x) if x.isdigit() else float(x), help="Test size")
@@ -61,11 +61,68 @@ def main(args: argparse.Namespace) -> tuple[float, float]:
     #
     # In all cases, the class prior is the distribution of the train data classes.
 
+    class_counts = np.bincount(train_target, minlength=args.classes)
+    priors = class_counts / len(train_target)
+
+    if args.naive_bayes_type == "gaussian":
+        means = np.array([
+            train_data[train_target == c].mean(axis=0)
+            for c in range(args.classes)
+        ])
+
+        variances = np.array([
+            train_data[train_target == c].var(axis=0) + args.alpha
+            for c in range(args.classes)
+        ])
+
+    elif args.naive_bayes_type == "multinomial":
+        counts = np.array([
+            train_data[train_target == c].sum(axis=0)
+            for c in range(args.classes)
+        ])
+
+        probabilities = (counts + args.alpha) / (counts.sum(axis=1, keepdims=True) + args.alpha * train_data.shape[1])
+
+    elif args.naive_bayes_type == "bernoulli":
+        binary_train = (train_data >= 8).astype(int)
+
+        counts = np.array([
+            binary_train[train_target == c].sum(axis=0)
+            for c in range(args.classes)
+        ])
+
+        probabilities = (counts + args.alpha) / (class_counts[:, None] + 2 * args.alpha)
+
     # TODO: Predict the test data classes, and compute
     # - the test set accuracy, and
     # - the joint log-probability of the test set, i.e.,
     #     \sum_{(x_i, t_i) \in test set} \log P(x_i, t_i).
-    test_accuracy, test_log_probability = ...
+
+    log_priors = np.log(priors)
+
+    if args.naive_bayes_type == "gaussian":
+        log_likelihood = scipy.stats.norm.logpdf(
+            test_data[:, None, :],
+            loc=means[None, :, :],
+            scale=np.sqrt(variances)[None, :, :]
+        ).sum(axis=2)
+
+    elif args.naive_bayes_type == "multinomial":
+        log_likelihood = np.dot(test_data, np.log(probabilities).T)
+
+    elif args.naive_bayes_type == "bernoulli":
+        binary_test = (test_data >= 8).astype(int)
+
+        log_likelihood = (np.dot(binary_test, np.log(probabilities).T) + np.dot(1 - binary_test, np.log(1 - probabilities).T))
+
+    joint_log_probabilities = log_likelihood + log_priors
+
+    predictions = np.argmax(joint_log_probabilities, axis=1)
+
+    test_accuracy = np.mean(predictions == test_target)
+
+    test_log_probability = np.sum(joint_log_probabilities[np.arange(len(test_target)), test_target])
+
 
     return 100 * test_accuracy, test_log_probability
 

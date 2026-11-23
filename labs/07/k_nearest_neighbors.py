@@ -26,13 +26,13 @@ import sklearn.preprocessing
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
-parser.add_argument("--k", default=1, type=int, help="K nearest neighbors to consider")
+parser.add_argument("--k", default=3, type=int, help="K nearest neighbors to consider")
 parser.add_argument("--p", default=2, type=int, help="Use L_p as distance metric")
 parser.add_argument("--plot", default=False, const=True, nargs="?", type=str, help="Plot the predictions")
 parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
 parser.add_argument("--test_size", default=500, type=int, help="Test set size")
-parser.add_argument("--train_size", default=1000, type=int, help="Train set size")
+parser.add_argument("--train_size", default=100, type=int, help="Train set size")
 parser.add_argument("--weights", default="uniform", choices=["uniform", "inverse", "softmax"], help="Weighting to use")
 # If you add more arguments, ReCodEx will keep them with your default values.
 
@@ -79,7 +79,44 @@ def main(args: argparse.Namespace) -> float:
     # - "uniform": all nearest neighbors have the same weight,
     # - "inverse": `1/distances` is used as weights,
     # - "softmax": `softmax(-distances)` is used as weights.
-    test_predictions = ...
+
+    test_predictions = []
+    test_neighbors = []
+
+    for test_example in test_data:
+        # L_p distances to all training examples
+        distances = np.sum(np.abs(train_data - test_example) ** args.p,axis=1) ** (1 / args.p)
+
+        # k nearest neighbors
+        nearest = np.argsort(distances)[:args.k]
+        test_neighbors.append(nearest)
+
+        # distances and target classes
+        nearest_distances = distances[nearest]
+        nearest_targets = train_target[nearest]
+
+        # calculate weights
+        if args.weights == "uniform":
+            weights = np.ones(args.k)
+
+        elif args.weights == "inverse":
+            weights = 1 / np.maximum(nearest_distances, 1e-10)
+
+        elif args.weights == "softmax":
+            values = np.exp(-nearest_distances)
+            weights = values / np.sum(values)
+
+        # sum weights for each class
+        votes = np.bincount(
+            nearest_targets,
+            weights=weights,
+            minlength=10
+        )
+
+        # choose the class with the highest vote
+        test_predictions.append(np.argmax(votes))
+
+    test_predictions = np.array(test_predictions)
 
     accuracy = sklearn.metrics.accuracy_score(test_target, test_predictions)
 
